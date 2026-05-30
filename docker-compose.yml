@@ -1,0 +1,10 @@
+services:
+  finalcity-bot:
+    build: .
+    container_name: finalcity-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # HIER ANPASSEN falls du die DB woanders speichern willst
+      - ./data:/app/data

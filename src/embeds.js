@@ -140,33 +140,33 @@ function buildFactionsEmbed({
   onlinePlayers,
   serverStatus = null
 }) {
-  const lines = [];
+  const embed = new EmbedBuilder()
+    .setTitle('🏛️ Final City Fraktionen')
+    .setColor(0x3498db)
+    .setTimestamp(new Date());
+
+  if (!factions.length) {
+    embed.setDescription('Es wurden noch keine Fraktionen gespeichert.');
+    return embed;
+  }
 
   for (const faction of factions) {
     const count = onlinePlayers.filter((player) =>
       normalizeForCompare(player.name).includes(faction.normalized_tag)
     ).length;
 
-    lines.push(
-      `**${faction.tag}**\n👥 Online: \`${count}\``
-    );
+    embed.addFields({
+      name: faction.tag,
+      value: `👥 ${count}`,
+      inline: true
+    });
   }
-
-  const embed = new EmbedBuilder()
-    .setTitle('Final City Fraktionen')
-    .setColor(0x3498db)
-    .setDescription(
-      lines.length
-        ? lines.join('\n\n')
-        : 'Es wurden noch keine Fraktionen gespeichert.'
-    )
-    .setTimestamp(new Date());
 
   if (serverStatus) {
     embed.addFields({
-      name: 'Serverstatus',
-      value: `Online: **${serverStatus.clients}/${serverStatus.maxClients || '?'}**`,
-      inline: true
+      name: '📊 Gesamt Online',
+      value: `${serverStatus.clients}/${serverStatus.maxClients || '?'}`,
+      inline: false
     });
   }
 

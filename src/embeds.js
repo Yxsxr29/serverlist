@@ -1,10 +1,21 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
+} = require('discord.js');
+
 const config = require('./config');
 
 function formatTime(iso) {
   if (!iso) return '-';
+
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '-';
+
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
   return date.toLocaleString('de-DE', {
     timeZone: 'Europe/Berlin',
     day: '2-digit',
@@ -19,6 +30,7 @@ function chunkPlayers(players, page, perPage) {
   const totalPages = Math.max(1, Math.ceil(players.length / perPage));
   const safePage = Math.min(Math.max(page, 0), totalPages - 1);
   const start = safePage * perPage;
+
   return {
     page: safePage,
     totalPages,
@@ -28,8 +40,16 @@ function chunkPlayers(players, page, perPage) {
 
 function buildPlayerLine(player, index, showHistory) {
   const status = player.currently_online ? '🟢' : '⚫';
-  const ping = player.last_ping !== null && player.last_ping !== undefined ? `${player.last_ping}ms` : '-';
-  const id = player.last_player_id !== null && player.last_player_id !== undefined ? player.last_player_id : '-';
+
+  const ping =
+    player.last_ping !== null && player.last_ping !== undefined
+      ? `${player.last_ping}ms`
+      : '-';
+
+  const id =
+    player.last_player_id !== null && player.last_player_id !== undefined
+      ? player.last_player_id
+      : '-';
 
   if (showHistory) {
     const since = player.currently_online
@@ -42,8 +62,15 @@ function buildPlayerLine(player, index, showHistory) {
   return `**${index}.** ${status} ${player.name} — ID: \`${id}\` • Ping: \`${ping}\``;
 }
 
-function buildPlayersEmbed({ players, page = 0, search = '', showHistory = false, serverStatus = null }) {
+function buildPlayersEmbed({
+  players,
+  page = 0,
+  search = '',
+  showHistory = false,
+  serverStatus = null
+}) {
   const perPage = config.playersPerPage;
+
   const chunk = chunkPlayers(players, page, perPage);
   const offset = chunk.page * perPage;
 
@@ -52,7 +79,9 @@ function buildPlayersEmbed({ players, page = 0, search = '', showHistory = false
     : 'Final City Spieler';
 
   const description = chunk.items.length
-    ? chunk.items.map((p, i) => buildPlayerLine(p, offset + i + 1, showHistory)).join('\n\n')
+    ? chunk.items
+        .map((p, i) => buildPlayerLine(p, offset + i + 1, showHistory))
+        .join('\n\n')
     : 'Keine Spieler gefunden.';
 
   const embed = new EmbedBuilder()
@@ -72,10 +101,19 @@ function buildPlayersEmbed({ players, page = 0, search = '', showHistory = false
     });
   }
 
-  return { embed, page: chunk.page, totalPages: chunk.totalPages };
+  return {
+    embed,
+    page: chunk.page,
+    totalPages: chunk.totalPages
+  };
 }
 
-function buildPaginationRow({ page, totalPages, search = '', mode = 'online' }) {
+function buildPaginationRow({
+  page,
+  totalPages,
+  search = '',
+  mode = 'online'
+}) {
   const disabled = totalPages <= 1;
 
   return new ActionRowBuilder().addComponents(
@@ -84,6 +122,7 @@ function buildPaginationRow({ page, totalPages, search = '', mode = 'online' }) 
       .setLabel('Zurück')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled || page <= 0),
+
     new ButtonBuilder()
       .setCustomId(`fc:${mode}:${page + 1}:${encodeURIComponent(search)}`)
       .setLabel('Weiter')
@@ -92,7 +131,75 @@ function buildPaginationRow({ page, totalPages, search = '', mode = 'online' }) 
   );
 }
 
+function normalizeForCompare(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildFactionsEmbed({
+  factions,
+  onlinePlayers,
+  serverStatus = null
+}) {
+  const lines = [];
+
+  for (const faction of factions) {
+    const count = onlinePlayers.filter((player) =>
+      normalizeForCompare(player.name).includes(faction.normalized_tag)
+    ).length;
+
+    lines.push(
+      `**${faction.tag}**\n👥 Online: \`${count}\``
+    );
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle('Final City Fraktionen')
+    .setColor(0x3498db)
+    .setDescription(
+      lines.length
+        ? lines.join('\n\n')
+        : 'Es wurden noch keine Fraktionen gespeichert.'
+    )
+    .setTimestamp(new Date());
+
+  if (serverStatus) {
+    embed.addFields({
+      name: 'Serverstatus',
+      value: `Online: **${serverStatus.clients}/${serverStatus.maxClients || '?'}**`,
+      inline: true
+    });
+  }
+
+  return embed;
+}
+
+function buildFactionRemoveRows(factions) {
+  const rows = [];
+  const maxButtonsPerRow = 5;
+
+  for (let i = 0; i < factions.length; i += maxButtonsPerRow) {
+    const row = new ActionRowBuilder();
+
+    const chunk = factions.slice(i, i + maxButtonsPerRow);
+
+    for (const faction of chunk) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`fc:frakremove:${faction.id}`)
+          .setLabel(faction.tag.slice(0, 80))
+          .setStyle(ButtonStyle.Danger)
+      );
+    }
+
+    rows.push(row);
+  }
+
+  return rows;
+}
+
 module.exports = {
   buildPlayersEmbed,
-  buildPaginationRow
+  buildPaginationRow,
+  buildFactionsEmbed,
+  buildFactionRemoveRows
 };

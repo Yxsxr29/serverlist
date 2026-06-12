@@ -1,13 +1,24 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const config = require('./config');
 const { fetchFinalCity } = require('./fivem');
+
 const {
   syncOnlinePlayers,
   cleanupOldOffline,
   getOnlinePlayers,
-  getHistoryPlayers
+  getHistoryPlayers,
+  addFaction,
+  getFactions,
+  getFactionById,
+  removeFactionById
 } = require('./db');
-const { buildPlayersEmbed, buildPaginationRow } = require('./embeds');
+
+const {
+  buildPlayersEmbed,
+  buildPaginationRow,
+  buildFactionsEmbed,
+  buildFactionRemoveRows
+} = require('./embeds');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -18,13 +29,16 @@ let isPolling = false;
 
 async function pollFinalCity() {
   if (isPolling) return;
+
   isPolling = true;
 
   try {
     const server = await fetchFinalCity();
+
     lastServerStatus = server;
 
     syncOnlinePlayers(server.players);
+
     const deleted = cleanupOldOffline(config.deleteOfflineAfterDays);
 
     console.log(
@@ -38,16 +52,30 @@ async function pollFinalCity() {
 }
 
 function isAllowedChannel(interaction) {
-  // HIER ANPASSEN in .env: ALLOWED_CHANNEL_ID leer lassen, wenn der Command überall gehen soll.
   if (!config.allowedChannelId) return true;
   return interaction.channelId === config.allowedChannelId;
 }
 
-async function replyWithPlayers(interaction, { page = 0, search = '', mode = 'online', update = false } = {}) {
+async function replyWithPlayers(
+  interaction,
+  {
+    page = 0,
+    search = '',
+    mode = 'online',
+    update = false
+  } = {}
+) {
   const showHistory = mode === 'history';
-  const players = showHistory ? getHistoryPlayers(search) : getOnlinePlayers(search);
 
-  const { embed, page: safePage, totalPages } = buildPlayersEmbed({
+  const players = showHistory
+    ? getHistoryPlayers(search)
+    : getOnlinePlayers(search);
+
+  const {
+    embed,
+    page: safePage,
+    totalPages
+  } = buildPlayersEmbed({
     players,
     page,
     search,
@@ -74,20 +102,118 @@ async function replyWithPlayers(interaction, { page = 0, search = '', mode = 'on
   }
 }
 
+async function replyWithFactions(interaction) {
+  const factions = getFactions();
+  const onlinePlayers = getOnlinePlayers();
+
+  const embed = buildFactionsEmbed({
+    factions,
+    onlinePlayers,
+    serverStatus: lastServerStatus
+  });
+
+  await interaction.reply({
+    embeds: [embed]
+  });
+}
+
+async function replyWithFactionRemove(interaction) {
+  const factions = getFactions();
+
+  if (!factions.length) {
+    await interaction.reply({
+      content: 'Es sind keine Fraktionen gespeichert.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const rows = buildFactionRemoveRows(factions);
+
+  await interaction.reply({
+    content: 'Wähle eine Fraktion aus, die entfernt werden soll:',
+    components: rows,
+    ephemeral: true
+  });
+}
+
+async function handleAddFaction(interaction) {
+  const tag = interaction.options.getString('string', true).trim();
+
+  if (!tag) {
+    await interaction.reply({
+      content: 'Bitte gib einen gültigen Fraktions-String an.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  try {
+    addFaction(tag);
+
+    await interaction.reply({
+      content: `Fraktion \`${tag}\` wurde hinzugefügt.`,
+      ephemeral: true
+    });
+  } catch (error) {
+    const isDuplicate =
+      String(error.message || '').includes('UNIQUE') ||
+      String(error.code || '').includes('SQLITE_CONSTRAINT_UNIQUE');
+
+    await interaction.reply({
+      content: isDuplicate
+        ? `Die Fraktion \`${tag}\` existiert bereits. Groß-/Kleinschreibung wird ignoriert.`
+        : `Fehler beim Hinzufügen: ${error.message}`,
+      ephemeral: true
+    });
+  }
+}
+
+async function handleFactionRemoveButton(interaction, factionIdRaw) {
+  const factionId = Number(factionIdRaw);
+
+  if (!Number.isFinite(factionId)) {
+    await interaction.update({
+      content: 'Ungültige Fraktion.',
+      components: []
+    });
+    return;
+  }
+
+  const faction = getFactionById(factionId);
+
+  if (!faction) {
+    await interaction.update({
+      content: 'Diese Fraktion existiert nicht mehr.',
+      components: []
+    });
+    return;
+  }
+
+  removeFactionById(factionId);
+
+  await interaction.update({
+    content: `Fraktion \`${faction.tag}\` wurde entfernt.`,
+    components: []
+  });
+}
+
 client.once('ready', async () => {
   console.log(`Bot eingeloggt als ${client.user.tag}`);
 
-  // Direkt beim Start einmal pollen, damit /finalcity sofort Daten hat.
   await pollFinalCity();
 
-  // HIER ANPASSEN in .env: POLL_INTERVAL_SECONDS, Standard 30 Sekunden.
   setInterval(pollFinalCity, config.pollIntervalSeconds * 1000);
 });
 
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName !== 'finalcity') return;
+      const allowedCommands = ['finalcity', 'addfrak', 'fraks', 'fraksremove'];
+
+      if (!allowedCommands.includes(interaction.commandName)) {
+        return;
+      }
 
       if (!isAllowedChannel(interaction)) {
         await interaction.reply({
@@ -97,17 +223,42 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
-      const search = interaction.options.getString('suche') || '';
-      const history = interaction.options.getBoolean('history') || false;
-      const mode = history ? 'history' : 'online';
+      if (interaction.commandName === 'addfrak') {
+        await handleAddFaction(interaction);
+        return;
+      }
 
-      await replyWithPlayers(interaction, { page: 0, search, mode });
-      return;
+      if (interaction.commandName === 'fraks') {
+        await replyWithFactions(interaction);
+        return;
+      }
+
+      if (interaction.commandName === 'fraksremove') {
+        await replyWithFactionRemove(interaction);
+        return;
+      }
+
+      if (interaction.commandName === 'finalcity') {
+        const search = interaction.options.getString('suche') || '';
+        const history = interaction.options.getBoolean('history') || false;
+        const mode = history ? 'history' : 'online';
+
+        await replyWithPlayers(interaction, {
+          page: 0,
+          search,
+          mode
+        });
+
+        return;
+      }
     }
 
     if (interaction.isButton()) {
       const [prefix, mode, pageRaw, encodedSearch = ''] = interaction.customId.split(':');
-      if (prefix !== 'fc') return;
+
+      if (prefix !== 'fc') {
+        return;
+      }
 
       if (!isAllowedChannel(interaction)) {
         await interaction.reply({
@@ -117,10 +268,20 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
+      if (mode === 'frakremove') {
+        await handleFactionRemoveButton(interaction, pageRaw);
+        return;
+      }
+
       const page = Number(pageRaw) || 0;
       const search = decodeURIComponent(encodedSearch);
 
-      await replyWithPlayers(interaction, { page, search, mode, update: true });
+      await replyWithPlayers(interaction, {
+        page,
+        search,
+        mode,
+        update: true
+      });
     }
   } catch (error) {
     console.error('[INTERACTION] Fehler:', error);
@@ -128,9 +289,15 @@ client.on('interactionCreate', async (interaction) => {
     const message = 'Es ist ein Fehler aufgetreten. Prüfe die Bot-Logs.';
 
     if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content: message, ephemeral: true }).catch(() => {});
+      await interaction.followUp({
+        content: message,
+        ephemeral: true
+      }).catch(() => {});
     } else {
-      await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
+      await interaction.reply({
+        content: message,
+        ephemeral: true
+      }).catch(() => {});
     }
   }
 });

@@ -16,7 +16,25 @@ const commands = [
         .setName('history')
         .setDescription('Auch Offline-/History-Einträge anzeigen')
         .setRequired(false)
-    )
+    ),
+
+  new SlashCommandBuilder()
+    .setName('addfrak')
+    .setDescription('Fügt eine Fraktion per Nametag-String hinzu')
+    .addStringOption((option) =>
+      option
+        .setName('string')
+        .setDescription('String im Nametag, z.B. LSPD, Vagos, Grove')
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('fraks')
+    .setDescription('Zeigt alle gespeicherten Fraktionen mit Online-Anzahl'),
+
+  new SlashCommandBuilder()
+    .setName('fraksremove')
+    .setDescription('Entfernt gespeicherte Fraktionen per Button')
 ].map((command) => command.toJSON());
 
 async function main() {

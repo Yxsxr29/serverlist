@@ -27,6 +27,15 @@ CREATE TABLE IF NOT EXISTS players (
 CREATE INDEX IF NOT EXISTS idx_players_normalized_name ON players(normalized_name);
 CREATE INDEX IF NOT EXISTS idx_players_currently_online ON players(currently_online);
 CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen);
+
+CREATE TABLE IF NOT EXISTS factions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tag TEXT NOT NULL,
+  normalized_tag TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_factions_normalized_tag ON factions(normalized_tag);
 `);
 
 function nowIso() {
@@ -144,10 +153,53 @@ function getHistoryPlayers(search = '') {
   `).all();
 }
 
+function addFaction(tag) {
+  const cleanTag = String(tag || '').trim();
+
+  if (!cleanTag) {
+    throw new Error('Fraktions-String darf nicht leer sein.');
+  }
+
+  const normalizedTag = normalizeName(cleanTag);
+  const now = nowIso();
+
+  return db.prepare(`
+    INSERT INTO factions (tag, normalized_tag, created_at)
+    VALUES (?, ?, ?)
+  `).run(cleanTag, normalizedTag, now);
+}
+
+function getFactions() {
+  return db.prepare(`
+    SELECT *
+    FROM factions
+    ORDER BY tag COLLATE NOCASE ASC
+  `).all();
+}
+
+function getFactionById(id) {
+  return db.prepare(`
+    SELECT *
+    FROM factions
+    WHERE id = ?
+  `).get(id);
+}
+
+function removeFactionById(id) {
+  return db.prepare(`
+    DELETE FROM factions
+    WHERE id = ?
+  `).run(id);
+}
+
 module.exports = {
   syncOnlinePlayers,
   cleanupOldOffline,
   getOnlinePlayers,
   getHistoryPlayers,
-  normalizeName
+  normalizeName,
+  addFaction,
+  getFactions,
+  getFactionById,
+  removeFactionById
 };

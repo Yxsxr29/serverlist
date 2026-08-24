@@ -46,11 +46,18 @@ CREATE TABLE IF NOT EXISTS spectates (
   normalized_search TEXT NOT NULL,
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  last_matches TEXT,
   UNIQUE(channel_id, normalized_search)
 );
 
 CREATE INDEX IF NOT EXISTS idx_spectates_channel ON spectates(channel_id);
 `);
+
+// Bestehende Datenbanken ohne gespeicherten Spectate-Zustand migrieren.
+const spectateColumns = db.prepare('PRAGMA table_info(spectates)').all();
+if (!spectateColumns.some((column) => column.name === 'last_matches')) {
+  db.exec('ALTER TABLE spectates ADD COLUMN last_matches TEXT');
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -225,7 +232,7 @@ function getSpectate(channelId, search) {
   `).get(String(channelId), normalizeName(search));
 }
 
-function addSpectate({ guildId, channelId, messageId, search, createdBy }) {
+function addSpectate({ guildId, channelId, messageId, search, createdBy, lastMatches = [] }) {
   const cleanSearch = String(search || '').trim();
 
   if (!cleanSearch) {
@@ -234,8 +241,9 @@ function addSpectate({ guildId, channelId, messageId, search, createdBy }) {
 
   return db.prepare(`
     INSERT INTO spectates (
-      guild_id, channel_id, message_id, search, normalized_search, created_by, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      guild_id, channel_id, message_id, search, normalized_search, created_by, created_at,
+      last_matches
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     String(guildId),
     String(channelId),
@@ -243,7 +251,8 @@ function addSpectate({ guildId, channelId, messageId, search, createdBy }) {
     cleanSearch,
     normalizeName(cleanSearch),
     String(createdBy),
-    nowIso()
+    nowIso(),
+    JSON.stringify(lastMatches)
   );
 }
 
@@ -253,6 +262,14 @@ function setSpectateMessageId(id, messageId) {
     SET message_id = ?
     WHERE id = ?
   `).run(messageId ? String(messageId) : null, id);
+}
+
+function setSpectateLastMatches(id, matches) {
+  return db.prepare(`
+    UPDATE spectates
+    SET last_matches = ?
+    WHERE id = ?
+  `).run(JSON.stringify(matches), id);
 }
 
 function getSpectateById(id) {
@@ -277,6 +294,7 @@ module.exports = {
   getSpectate,
   addSpectate,
   setSpectateMessageId,
+  setSpectateLastMatches,
   getSpectateById,
   removeSpectateById
 };

@@ -229,6 +229,27 @@ function buildSpectateEmbed({ search, players, serverStatus = null }) {
   return embed;
 }
 
+function buildSpectateStatusEmbed({ search, online = [], offline = [] }) {
+  const lines = [];
+
+  if (online.length) {
+    lines.push('**Jetzt online**');
+    lines.push(...online.map((name) => `🟢 ${name}`));
+  }
+
+  if (offline.length) {
+    if (lines.length) lines.push('');
+    lines.push('**Jetzt offline**');
+    lines.push(...offline.map((name) => `⚫ ${name}`));
+  }
+
+  return new EmbedBuilder()
+    .setTitle(`👁️ Spectate-Status: ${search}`)
+    .setDescription(lines.join('\n').slice(0, 4000))
+    .setColor(online.length ? 0x2ecc71 : 0x95a5a6)
+    .setTimestamp(new Date());
+}
+
 function buildSpectateList({ spectates, page = 0 }) {
   const perPage = 20;
   const totalPages = Math.max(1, Math.ceil(spectates.length / perPage));
@@ -285,5 +306,6 @@ module.exports = {
   buildFactionsEmbed,
   buildFactionRemoveRows,
   buildSpectateEmbed,
+  buildSpectateStatusEmbed,
   buildSpectateList
 };

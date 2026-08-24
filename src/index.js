@@ -15,6 +15,7 @@ const {
   getSpectate,
   addSpectate,
   setSpectateMessageId,
+  setSpectateLastMatches,
   getSpectateById,
   removeSpectateById
 } = require('./db');
@@ -25,6 +26,7 @@ const {
   buildFactionsEmbed,
   buildFactionRemoveRows,
   buildSpectateEmbed,
+  buildSpectateStatusEmbed,
   buildSpectateList
 } = require('./embeds');
 
@@ -46,6 +48,21 @@ function buildSpectatePayload(spectate) {
   };
 }
 
+function playerNames(players) {
+  return players.map((player) => player.name);
+}
+
+function readLastMatches(spectate) {
+  if (spectate.last_matches === null || spectate.last_matches === undefined) return null;
+
+  try {
+    const matches = JSON.parse(spectate.last_matches);
+    return Array.isArray(matches) ? matches.map(String) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function updateSpectates() {
   for (const spectate of getSpectates(config.spectateChannelId)) {
     try {
@@ -55,20 +72,55 @@ async function updateSpectates() {
         continue;
       }
 
-      const payload = buildSpectatePayload(spectate);
+      const players = getOnlinePlayers(spectate.search);
+      const currentMatches = playerNames(players);
+      const previousMatches = readLastMatches(spectate);
+      const currentSet = new Set(currentMatches);
+      const previousSet = new Set(previousMatches || []);
+      const wentOnline = previousMatches
+        ? currentMatches.filter((name) => !previousSet.has(name))
+        : [];
+      const wentOffline = previousMatches
+        ? previousMatches.filter((name) => !currentSet.has(name))
+        : [];
+      const payload = {
+        embeds: [buildSpectateEmbed({
+          search: spectate.search,
+          players,
+          serverStatus: lastServerStatus
+        })],
+        allowedMentions: { parse: [] }
+      };
+
+      let overviewMessageExists = false;
 
       if (spectate.message_id) {
         try {
           const message = await channel.messages.fetch(spectate.message_id);
           await message.edit(payload);
-          continue;
+          overviewMessageExists = true;
         } catch (error) {
           if (error.code !== 10008) throw error;
         }
       }
 
-      const message = await channel.send(payload);
-      setSpectateMessageId(spectate.id, message.id);
+      if (!overviewMessageExists) {
+        const message = await channel.send(payload);
+        setSpectateMessageId(spectate.id, message.id);
+      }
+
+      if (wentOnline.length || wentOffline.length) {
+        await channel.send({
+          embeds: [buildSpectateStatusEmbed({
+            search: spectate.search,
+            online: wentOnline,
+            offline: wentOffline
+          })],
+          allowedMentions: { parse: [] }
+        });
+      }
+
+      setSpectateLastMatches(spectate.id, currentMatches);
     } catch (error) {
       console.error(`[SPECTATE] Fehler bei #${spectate.id}:`, error.message);
     }
@@ -270,13 +322,15 @@ async function handleSpectate(interaction) {
 
   const temporarySpectate = { search };
   const message = await channel.send(buildSpectatePayload(temporarySpectate));
+  const initialMatches = playerNames(getOnlinePlayers(search));
 
   addSpectate({
     guildId: interaction.guildId,
     channelId: config.spectateChannelId,
     messageId: message.id,
     search,
-    createdBy: interaction.user.id
+    createdBy: interaction.user.id,
+    lastMatches: initialMatches
   });
 
   await interaction.editReply(

@@ -31,6 +31,9 @@ module.exports = {
   // OPTIONAL in .env: Nur diesen Channel erlauben. Leer = alle Channels.
   allowedChannelId: optional('ALLOWED_CHANNEL_ID', ''),
 
+  // Spectate-Embeds werden ausschließlich in diesem Channel veröffentlicht.
+  spectateChannelId: optional('SPECTATE_CHANNEL_ID', '1541513687943090186'),
+
   // Final City ist aktuell z5ejb5. Kannst du in .env ändern.
   fivemServerId: optional('FIVEM_SERVER_ID', 'z5ejb5'),
 

@@ -6,6 +6,8 @@ Discord Slash-Command Bot für Final City FiveM Spielerlisten.
 
 - `/finalcity` zeigt aktuelle Online-Spieler
 - `/finalcity suche:madrazo` filtert Namen case-insensitive per `includes()`
+- `/spectate string:madrazo` erstellt eine dauerhaft aktualisierte Nachricht mit passenden Online-Spielern
+- `/spectatelist` listet alle Spectates auf und ermöglicht das Entfernen per Button
 - Pagination mit Buttons bei vielen Spielern
 - SQLite History mit `first_seen`, `last_seen`, `online_since`, `offline_since`
 - Automatisches Löschen von Offline-Namen nach X Tagen

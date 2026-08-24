@@ -34,7 +34,23 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('fraksremove')
-    .setDescription('Entfernt gespeicherte Fraktionen per Button')
+    .setDescription('Entfernt gespeicherte Fraktionen per Button'),
+
+  new SlashCommandBuilder()
+    .setName('spectate')
+    .setDescription('Überwacht passende Online-Spieler automatisch')
+    .addStringOption((option) =>
+      option
+        .setName('string')
+        .setDescription('Namensbestandteil, der überwacht werden soll')
+        .setMinLength(1)
+        .setMaxLength(100)
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('spectatelist')
+    .setDescription('Zeigt und verwaltet alle aktiven Spectates')
 ].map((command) => command.toJSON());
 
 async function main() {

@@ -197,9 +197,93 @@ function buildFactionRemoveRows(factions) {
   return rows;
 }
 
+function buildSpectateEmbed({ search, players, serverStatus = null }) {
+  const visiblePlayers = players.slice(0, 50);
+  const description = visiblePlayers.length
+    ? visiblePlayers.map((player) => {
+        const id = player.last_player_id ?? '-';
+        const ping = player.last_ping ?? '-';
+        return `• ${player.name} — ID: \`${id}\` • Ping: \`${ping}ms\``;
+      }).join('\n')
+    : 'Aktuell ist kein passender Spieler online.';
+
+  const embed = new EmbedBuilder()
+    .setTitle(`👁️ Spectate: ${search}`)
+    .setDescription(description.slice(0, 4000))
+    .setColor(players.length ? 0x2ecc71 : 0x95a5a6)
+    .setFooter({
+      text: players.length > visiblePlayers.length
+        ? `${players.length} Treffer • Es werden die ersten ${visiblePlayers.length} angezeigt`
+        : `${players.length} Treffer • Automatische Aktualisierung`
+    })
+    .setTimestamp(new Date());
+
+  if (serverStatus) {
+    embed.addFields({
+      name: 'Serverstatus',
+      value: `Online: **${serverStatus.clients}/${serverStatus.maxClients || '?'}**`,
+      inline: true
+    });
+  }
+
+  return embed;
+}
+
+function buildSpectateList({ spectates, page = 0 }) {
+  const perPage = 20;
+  const totalPages = Math.max(1, Math.ceil(spectates.length / perPage));
+  const safePage = Math.min(Math.max(Number(page) || 0, 0), totalPages - 1);
+  const visible = spectates.slice(safePage * perPage, (safePage + 1) * perPage);
+
+  const embed = new EmbedBuilder()
+    .setTitle('👁️ Aktive Spectates')
+    .setDescription(visible.length
+      ? visible.map((spectate, index) =>
+          `**${safePage * perPage + index + 1}.** ${spectate.search}`
+        ).join('\n')
+      : 'Aktuell sind keine Spectates gespeichert.')
+    .setColor(0x3498db)
+    .setFooter({ text: `Seite ${safePage + 1}/${totalPages} • Gesamt: ${spectates.length}` });
+
+  const rows = [];
+  for (let i = 0; i < visible.length; i += 5) {
+    const row = new ActionRowBuilder();
+    for (const spectate of visible.slice(i, i + 5)) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`fc:spectateremove:${spectate.id}:${safePage}`)
+          .setLabel(`❌ ${spectate.search}`.slice(0, 80))
+          .setStyle(ButtonStyle.Danger)
+      );
+    }
+    rows.push(row);
+  }
+
+  // Discord erlaubt höchstens fünf Reihen. Bei einer vollen Seite ersetzt
+  // die Navigation den letzten Eintrag; deshalb nutzen wir 20 statt 25 Einträge.
+  if (totalPages > 1) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`fc:spectatelist:${safePage - 1}`)
+        .setLabel('Zurück')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage === 0),
+      new ButtonBuilder()
+        .setCustomId(`fc:spectatelist:${safePage + 1}`)
+        .setLabel('Weiter')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage >= totalPages - 1)
+    ));
+  }
+
+  return { embed, rows };
+}
+
 module.exports = {
   buildPlayersEmbed,
   buildPaginationRow,
   buildFactionsEmbed,
-  buildFactionRemoveRows
+  buildFactionRemoveRows,
+  buildSpectateEmbed,
+  buildSpectateList
 };

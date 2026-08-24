@@ -10,14 +10,22 @@ const {
   addFaction,
   getFactions,
   getFactionById,
-  removeFactionById
+  removeFactionById,
+  getSpectates,
+  getSpectate,
+  addSpectate,
+  setSpectateMessageId,
+  getSpectateById,
+  removeSpectateById
 } = require('./db');
 
 const {
   buildPlayersEmbed,
   buildPaginationRow,
   buildFactionsEmbed,
-  buildFactionRemoveRows
+  buildFactionRemoveRows,
+  buildSpectateEmbed,
+  buildSpectateList
 } = require('./embeds');
 
 const client = new Client({
@@ -26,6 +34,46 @@ const client = new Client({
 
 let lastServerStatus = null;
 let isPolling = false;
+
+function buildSpectatePayload(spectate) {
+  return {
+    embeds: [buildSpectateEmbed({
+      search: spectate.search,
+      players: getOnlinePlayers(spectate.search),
+      serverStatus: lastServerStatus
+    })],
+    allowedMentions: { parse: [] }
+  };
+}
+
+async function updateSpectates() {
+  for (const spectate of getSpectates(config.spectateChannelId)) {
+    try {
+      const channel = await client.channels.fetch(spectate.channel_id);
+      if (!channel || !channel.isTextBased() || !channel.messages) {
+        console.warn(`[SPECTATE] Channel ${spectate.channel_id} ist nicht verfügbar.`);
+        continue;
+      }
+
+      const payload = buildSpectatePayload(spectate);
+
+      if (spectate.message_id) {
+        try {
+          const message = await channel.messages.fetch(spectate.message_id);
+          await message.edit(payload);
+          continue;
+        } catch (error) {
+          if (error.code !== 10008) throw error;
+        }
+      }
+
+      const message = await channel.send(payload);
+      setSpectateMessageId(spectate.id, message.id);
+    } catch (error) {
+      console.error(`[SPECTATE] Fehler bei #${spectate.id}:`, error.message);
+    }
+  }
+}
 
 async function pollFinalCity() {
   if (isPolling) return;
@@ -40,6 +88,8 @@ async function pollFinalCity() {
     syncOnlinePlayers(server.players);
 
     const deleted = cleanupOldOffline(config.deleteOfflineAfterDays);
+
+    await updateSpectates();
 
     console.log(
       `[POLL] ${new Date().toISOString()} | online=${server.players.length} | clients=${server.clients}/${server.maxClients} | cleanup=${deleted}`
@@ -198,6 +248,76 @@ async function handleFactionRemoveButton(interaction, factionIdRaw) {
   });
 }
 
+async function handleSpectate(interaction) {
+  const search = interaction.options.getString('string', true).trim();
+  const existing = getSpectate(config.spectateChannelId, search);
+
+  if (existing) {
+    await interaction.reply({
+      content: `Für \`${existing.search}\` läuft bereits ein Spectate in <#${config.spectateChannelId}>.`,
+      ephemeral: true
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const channel = await client.channels.fetch(config.spectateChannelId);
+  if (!channel || !channel.isTextBased()) {
+    await interaction.editReply('Der konfigurierte Spectate-Channel ist nicht verfügbar.');
+    return;
+  }
+
+  const temporarySpectate = { search };
+  const message = await channel.send(buildSpectatePayload(temporarySpectate));
+
+  addSpectate({
+    guildId: interaction.guildId,
+    channelId: config.spectateChannelId,
+    messageId: message.id,
+    search,
+    createdBy: interaction.user.id
+  });
+
+  await interaction.editReply(
+    `Spectate für \`${search}\` wurde in <#${config.spectateChannelId}> gestartet.`
+  );
+}
+
+function spectateListPayload(page = 0) {
+  const { embed, rows } = buildSpectateList({
+    spectates: getSpectates(config.spectateChannelId),
+    page
+  });
+  return { embeds: [embed], components: rows };
+}
+
+async function replyWithSpectateList(interaction, page = 0, update = false) {
+  const payload = spectateListPayload(page);
+  if (update) await interaction.update(payload);
+  else await interaction.reply({ ...payload, ephemeral: true });
+}
+
+async function handleSpectateRemoveButton(interaction, idRaw, pageRaw) {
+  const spectate = getSpectateById(Number(idRaw));
+  if (!spectate || spectate.channel_id !== config.spectateChannelId) {
+    await interaction.update(spectateListPayload(Number(pageRaw) || 0));
+    return;
+  }
+
+  removeSpectateById(spectate.id);
+
+  if (spectate.message_id) {
+    const channel = await client.channels.fetch(spectate.channel_id).catch(() => null);
+    if (channel?.isTextBased()) {
+      const message = await channel.messages.fetch(spectate.message_id).catch(() => null);
+      if (message) await message.delete().catch(() => null);
+    }
+  }
+
+  await interaction.update(spectateListPayload(Number(pageRaw) || 0));
+}
+
 client.once('ready', async () => {
   console.log(`Bot eingeloggt als ${client.user.tag}`);
 
@@ -209,7 +329,9 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
-      const allowedCommands = ['finalcity', 'addfrak', 'fraks', 'fraksremove'];
+      const allowedCommands = [
+        'finalcity', 'addfrak', 'fraks', 'fraksremove', 'spectate', 'spectatelist'
+      ];
 
       if (!allowedCommands.includes(interaction.commandName)) {
         return;
@@ -235,6 +357,18 @@ client.on('interactionCreate', async (interaction) => {
 
       if (interaction.commandName === 'fraksremove') {
         await replyWithFactionRemove(interaction);
+        return;
+      }
+
+
+      if (interaction.commandName === 'spectate') {
+        await handleSpectate(interaction);
+        return;
+      }
+
+
+      if (interaction.commandName === 'spectatelist') {
+        await replyWithSpectateList(interaction);
         return;
       }
 
@@ -270,6 +404,17 @@ client.on('interactionCreate', async (interaction) => {
 
       if (mode === 'frakremove') {
         await handleFactionRemoveButton(interaction, pageRaw);
+        return;
+      }
+
+
+      if (mode === 'spectateremove') {
+        await handleSpectateRemoveButton(interaction, pageRaw, encodedSearch);
+        return;
+      }
+
+      if (mode === 'spectatelist') {
+        await replyWithSpectateList(interaction, Number(pageRaw) || 0, true);
         return;
       }
 

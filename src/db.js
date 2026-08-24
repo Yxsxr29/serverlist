@@ -36,6 +36,20 @@ CREATE TABLE IF NOT EXISTS factions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_factions_normalized_tag ON factions(normalized_tag);
+
+CREATE TABLE IF NOT EXISTS spectates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  message_id TEXT,
+  search TEXT NOT NULL,
+  normalized_search TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(channel_id, normalized_search)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spectates_channel ON spectates(channel_id);
 `);
 
 function nowIso() {
@@ -192,6 +206,63 @@ function removeFactionById(id) {
   `).run(id);
 }
 
+function getSpectates(channelId = '') {
+  if (channelId) {
+    return db.prepare(`
+      SELECT * FROM spectates
+      WHERE channel_id = ?
+      ORDER BY search COLLATE NOCASE ASC
+    `).all(String(channelId));
+  }
+
+  return db.prepare(`SELECT * FROM spectates ORDER BY id ASC`).all();
+}
+
+function getSpectate(channelId, search) {
+  return db.prepare(`
+    SELECT * FROM spectates
+    WHERE channel_id = ? AND normalized_search = ?
+  `).get(String(channelId), normalizeName(search));
+}
+
+function addSpectate({ guildId, channelId, messageId, search, createdBy }) {
+  const cleanSearch = String(search || '').trim();
+
+  if (!cleanSearch) {
+    throw new Error('Spectate-Suchbegriff darf nicht leer sein.');
+  }
+
+  return db.prepare(`
+    INSERT INTO spectates (
+      guild_id, channel_id, message_id, search, normalized_search, created_by, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(guildId),
+    String(channelId),
+    messageId ? String(messageId) : null,
+    cleanSearch,
+    normalizeName(cleanSearch),
+    String(createdBy),
+    nowIso()
+  );
+}
+
+function setSpectateMessageId(id, messageId) {
+  return db.prepare(`
+    UPDATE spectates
+    SET message_id = ?
+    WHERE id = ?
+  `).run(messageId ? String(messageId) : null, id);
+}
+
+function getSpectateById(id) {
+  return db.prepare(`SELECT * FROM spectates WHERE id = ?`).get(id);
+}
+
+function removeSpectateById(id) {
+  return db.prepare(`DELETE FROM spectates WHERE id = ?`).run(id);
+}
+
 module.exports = {
   syncOnlinePlayers,
   cleanupOldOffline,
@@ -201,5 +272,11 @@ module.exports = {
   addFaction,
   getFactions,
   getFactionById,
-  removeFactionById
+  removeFactionById,
+  getSpectates,
+  getSpectate,
+  addSpectate,
+  setSpectateMessageId,
+  getSpectateById,
+  removeSpectateById
 };

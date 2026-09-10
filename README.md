@@ -26,13 +26,7 @@ DISCORD_TOKEN=...
 DISCORD_CLIENT_ID=...
 DISCORD_GUILD_ID=...
 FIVEM_SERVER_ID=kqq4yra
-FIVEM_PLAYERS_URL=http://45.157.234.215:30120/players.json
-FIVEM_PLAYERS_TOKEN=...
 ```
-
-`FIVEM_PLAYERS_TOKEN` muss dem Wert von `sv_playersToken` in der
-FXServer-Konfiguration entsprechen. Ohne diesen Token liefern aktuelle
-FXServer-Versionen öffentlich nur anonymisierte Einträge namens `Player`.
 
 Dependencies installieren:
 

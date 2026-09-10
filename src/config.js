@@ -34,11 +34,16 @@ module.exports = {
   // Spectate-Embeds werden ausschließlich in diesem Channel veröffentlicht.
   spectateChannelId: optional('SPECTATE_CHANNEL_ID', '1541513687943090186'),
 
-  // Final City ist aktuell z5ejb5. Kannst du in .env ändern.
-  fivemServerId: optional('FIVEM_SERVER_ID', 'z5ejb5'),
+  // Final City Join-Code. Kann in .env überschrieben werden.
+  fivemServerId: optional('FIVEM_SERVER_ID', 'kqq4yra'),
 
   // Cfx API Base URL. Normalerweise nicht ändern.
   cfxSingleUrl: optional('CFX_SINGLE_URL', 'https://frontend.cfx-services.net/api/servers/single'),
+
+  // Seit neueren FXServer-Versionen sind öffentliche Spielerlisten anonymisiert.
+  // Der Token muss dem Wert von `sv_playersToken` auf dem Gameserver entsprechen.
+  fivemPlayersToken: optional('FIVEM_PLAYERS_TOKEN', ''),
+  fivemPlayersUrl: optional('FIVEM_PLAYERS_URL', ''),
 
   pollIntervalSeconds: numberValue('POLL_INTERVAL_SECONDS', 30),
   deleteOfflineAfterDays: numberValue('DELETE_OFFLINE_AFTER_DAYS', 10),
